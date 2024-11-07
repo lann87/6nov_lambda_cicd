@@ -9,11 +9,11 @@
 
 ## Lambda deployment with Terraform and CICD pipeline
 
-
+This project demonstrates the implementation of a CI/CD pipeline for a serverless AWS Lambda function, utilizing Terraform for infrastructure as code and GitHub Actions for automation.  
 
 ### 1. Structure  
 
-Directories for Terraform, Docker, and workflows, automating infrastructure management and containerized application deployment.  
+Directories for Terraform, Python, and workflows, automating infrastructure management and Lambda functions.  
 
 ```sh
 .
@@ -36,9 +36,158 @@ Directories for Terraform, Docker, and workflows, automating infrastructure mana
 └── README.md                   # Documentation for the project and submission
 ```
 
-### 2. Terraform files  
+### 2. GitHub Actions Workflows  
 
-Configures a Lambda function call.  
+GitHub Actions Workflows: Three workflows - Checkov (security scans), CI-Lambda (Terraform fmt/init/validate/lint), and CD-Lambda (Terraform plan on PRs, apply on merge to main). 
+
+**Workflows Summmary**  
+
+![Alt Text](https://github.com/lann87/6nov_lambda_cicd/blob/main/resource/6nov-workflows-sum.png)
+
+**Lambda invoke and output**  
+
+![Alt Text](https://github.com/lann87/6nov_lambda_cicd/blob/main/resource/6nov-lambda-invoke-output.png)
+
+**checkov.yaml**  
+
+```yaml
+name: Checkov-lambda
+
+on:
+    pull_request:
+        branches: ["main"]  # Trigger the workflow for pull requests targeting the 'main' branch
+        paths:
+            - 'terraform/*'  # Only trigger the workflow when files within the 'terraform' directory are modified
+
+jobs:
+    Checkov:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: terraform  # Set the working directory to 'terraform' for the steps below
+
+        steps:
+        -   name: Checkov  # Step to check out the code from the repository
+            uses: actions/checkout@v3  # Uses GitHub's official checkout action to pull the code
+
+        -   name: Checkov  # Step to run Checkov to perform static analysis on Terraform code
+            uses: bridgecrewio/checkov-action@master  # Uses the official Checkov GitHub action
+            with:
+                framework: terraform  # Specifies that Checkov should analyze Terraform code
+```
+
+**ci-lambda.yaml**  
+
+```yaml
+name: Terraform CI
+
+# Trigger this workflow on pull requests to the main branch, only when files in the terraform directory change
+on:
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'terraform/*'
+
+jobs:
+  Terraform-Checks:
+    runs-on: ubuntu-latest
+
+    # Set the working directory for all run commands to the terraform directory
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      # Check out the repository's code
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # Set up Terraform for use in the workflow
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      # Check Terraform code formatting
+      - name: Terraform fmt check
+        id: fmt
+        run: terraform fmt -check
+
+      # Initialize Terraform without configuring the backend
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      # Validate the Terraform configuration
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      # Set up TFLint for Terraform linting
+      - uses: terraform-linters/setup-tflint@v3
+        with:
+          tflint_version: latest
+
+      # Show the installed TFLint version
+      - name: Show version
+        run: tflint --version
+
+      # Initialize TFLint to download rules and configure it
+      - name: Init TFLint
+        run: tflint --init
+
+      # Run TFLint to check for issues in Terraform code
+      - name: Run TFLint
+        run: tflint -f compact
+```
+
+**cd-lambda.yaml**  
+
+```yaml
+name: Terraform CD
+
+# Trigger this workflow on pull requests to the main branch, only when files in the terraform directory change
+on:
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'terraform/*'
+
+jobs:
+  Terraform-Plan:
+    runs-on: ubuntu-latest
+
+    # Set the working directory for all run commands to the terraform directory
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      # Check out the repository's code
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Set up Terraform for use in the workflow
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # Configure AWS credentials using secrets for authentication
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      # Initialize Terraform, setting up the environment and loading configurations
+      - name: Terraform Init
+        run: terraform init
+
+      # Generate and display the Terraform execution plan
+      - name: Terraform Plan
+        run: terraform plan
+```
+
+### 3. Terraform & Python files  
+
+Terraform configurations for an AWS Lambda function, IAM roles/policies, provider and backend setup, and an SNS dead-letter queue. A Python script defines the Lambda logic.  
 
 **lambda.tf**  
 
@@ -171,44 +320,29 @@ terraform {
 {"statusCode": 200, "body": "\"Good day, Alan!! I cannot wait to go to Tokyo for my holidays in December!!\""}
 ```
 
-### 3. GitHub Actions Workflows  
+**lambda_function.py**  
 
-Workflows automate code formatting, Terraform linting, Docker vulnerability scanning, and plan checks, ensuring quality and security.  
+```py
+import json
+import boto3
 
-**Workflows Summmary**  
-
-![Alt Text](https://github.com/lann87/30oct-ap-cicd-pipeline/blob/main/resource/30oct-github-workflows-sum.png)
-
-**Pull Request**  
-
-![Alt Text](https://github.com/lann87/30oct-ap-cicd-pipeline/blob/main/resource/30oct-pullrequest.png)
-
-**checkov.yaml**  
-
-```yaml
-
+def lambda_handler(event, context):
+    notification = 'Good day, {}!! I cannot wait to go to {} for my holidays in {}!!'.format(event['name'], event['city'], event['month'])
+    print(notification)
+    return {
+        'statusCode': 200,
+        'body': json.dumps(notification)
+    }
 ```
 
-**docker-checks.yaml**  
+### Terraform Apply and Destroy  
 
-```yaml
+Screenshots demonstrate successful apply and destroy actions.  
 
-```
+**Terraform Apply**  
 
-**terraform-checks.yaml**  
+![Alt Text](https://github.com/lann87/6nov_lambda_cicd/blob/main/resource/6nov-tf-apply.png)
 
-```yaml
+**Terraform Destroy**  
 
-```
-
-**terraform-plan.yaml**  
-
-```yaml
-
-```
-
-### Additions - Github Credential Personal Access Token for Trivy  
-
-![Alt Text](https://github.com/lann87/30oct-ap-cicd-pipeline/blob/main/resource/30oct-pat-trivy-cicd.png)
-
-![Alt Text](https://github.com/lann87/30oct-ap-cicd-pipeline/blob/main/resource/30oct-pat-for-trivy.png)
+![Alt Text](https://github.com/lann87/6nov_lambda_cicd/blob/main/resource/6nov-tf-destroy.png)
