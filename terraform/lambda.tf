@@ -42,4 +42,5 @@ resource "aws_signer_signing_profile" "ap-lambda-signerprof" {
 # Creating SNS topic for the lambda function's dead letter queue
 resource "aws_sns_topic" "lambda_dead_letter_topic" {
   name = "lambda-dead-letter-topic"
+  kms_master_key_id = "alias/aws/sns"
 }
