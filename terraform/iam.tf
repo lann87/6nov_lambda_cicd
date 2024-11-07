@@ -12,10 +12,13 @@ resource "aws_iam_role" "lambda_exec_role" {
   })
 }
 
-# SNS Publish inline policy
+# Define inline policy to allow Lambda function to publish to SNS topic
+# This is a mandatory res for dead letter queue functionality
 resource "aws_iam_role_policy" "sns_publish_policy" {
   name = "SNSPublishPolicy"
   role = aws_iam_role.lambda_exec_role.name
+
+  # Specify the policy document to grant necessary permissions
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
