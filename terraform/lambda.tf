@@ -5,10 +5,10 @@ resource "aws_lambda_function" "ap-lambda-fn" {
   role          = aws_iam_role.lambda_exec_role.arn
   handler       = "lambda_function.lambda_handler"
 
-  code_signing_config_arn        = aws_lambda_code_signing_config.ap-lambda
+  code_signing_config_arn        = aws_lambda_code_signing_config.ap-lambda-codesigning.arn
   reserved_concurrent_executions = 50
   dead_letter_config {
-    target_arn = "test"
+    target_arn = aws_sns_topic.lambda_dead_letter_topic.arn
   }
   tracing_config {
     mode = "Active"
@@ -18,8 +18,17 @@ resource "aws_lambda_function" "ap-lambda-fn" {
   source_code_hash = filebase64sha256("${path.module}/../python/lambda_function.zip")
 }
 
-resource "aws_lambda_code_signing_config" "ap-lambda" {
+resource "aws_lambda_code_signing_config" "ap-lambda-codesigning" {
   allowed_publishers {
-    signing_profile_version_arns = [aws_signer_signing_profile_version.example.arn]
+    signing_profile_version_arns = [aws_signer_signing_profile.ap-lambda-signerprof.arn]
   }
+}
+
+resource "aws_signer_signing_profile" "ap-lambda-signerprof" {
+  name_prefix = "apsigner"
+  platform_id = "AWSLambda-SHA384-ECDSA"
+}
+
+resource "aws_sns_topic" "lambda_dead_letter_topic" {
+  name = "lambda-dead-letter-topic"
 }
